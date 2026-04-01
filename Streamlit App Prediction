@@ -1,0 +1,127 @@
+import streamlit as st
+from snowflake.snowpark.context import get_active_session
+import pandas as pd
+import json
+
+session = get_active_session()
+
+st.set_page_config(page_title="House Price Estimator", layout="wide")
+
+st.title("Estimation du prix d'une maison")
+st.markdown("Renseignez les caractéristiques du bien pour obtenir une estimation de prix en temps réel.")
+st.divider()
+
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    st.subheader("Superficie & Structure")
+    area      = st.number_input("Surface (m2)", 30, 1000, 150, step=10)
+    stories   = st.select_slider("Nombre d'étages", options=[1, 2, 3, 4], value=2)
+    basement  = st.toggle("Sous-sol")
+    mainroad  = st.toggle("Accès route principale")
+
+with col2:
+    st.subheader("Pièces & Confort")
+    bedrooms  = st.select_slider("Chambres", options=[1, 2, 3, 4, 5, 6], value=3)
+    bathrooms = st.select_slider("Salles de bain", options=[1, 2, 3, 4], value=2)
+    parking   = st.select_slider("Places de parking", options=[0, 1, 2, 3], value=1)
+    guestroom = st.toggle("Chambre d'amis")
+
+with col3:
+    st.subheader("Équipements & Localisation")
+    aircon    = st.toggle("Climatisation")
+    prefarea  = st.toggle("Zone privilégiée")
+    furnishing = st.selectbox(
+        "État d'ameublement",
+        ["furnished", "semi-furnished", "unfurnished"],
+        format_func=lambda x: {
+            "furnished":      "Meublé",
+            "semi-furnished": "Semi-meublé",
+            "unfurnished":    "Non meublé"
+        }[x]
+    )
+
+st.divider()
+
+estimate = st.button("Estimer le prix", type="primary", use_container_width=False)
+
+if estimate:
+    enc      = lambda v: 1 if v else 0
+    furn_map = {"furnished": 2, "semi-furnished": 1, "unfurnished": 0}
+
+    query = f"""
+        SELECT HOUSE_PRICE_DB.ML.HOUSE_PRICE_PREDICTOR!PREDICT(
+            {int(area)}, {int(bedrooms)}, {int(bathrooms)},
+            {int(stories)}, {int(parking)},
+            {enc(mainroad)}, {enc(guestroom)}, {enc(basement)}, 0,
+            {enc(aircon)}, {enc(prefarea)}, {furn_map[furnishing]}
+        ) AS predicted_price
+    """
+
+    with st.spinner("Calcul en cours..."):
+        result = session.sql(query).to_pandas()
+        raw    = result.iloc[0, 0]
+
+        if isinstance(raw, dict):
+            price = float(list(raw.values())[0])
+        elif isinstance(raw, str):
+            try:
+                parsed = json.loads(raw)
+                price  = float(list(parsed.values())[0])
+            except Exception:
+                price  = float(raw)
+        else:
+            price = float(raw)
+
+    st.divider()
+
+    r1, r2, r3, r4 = st.columns(4)
+
+    with r1:
+        st.metric("Prix estimé", f"{price:,.0f} €")
+
+    with r2:
+        prix_m2 = price / area
+        st.metric("Prix au m²", f"{prix_m2:,.0f} €")
+
+    with r3:
+        if price <= 40000:
+            segment = "Bas"
+            delta   = "Marché accessible"
+        elif price <= 200000:
+            segment = "Moyen"
+            delta   = "Marché standard"
+        else:
+            segment = "Élevé"
+            delta   = "Marché premium"
+        st.metric("Segment", segment, delta)
+
+    with r4:
+        budget_10 = price * 1.10
+        st.metric("Budget avec marge 10%", f"{budget_10:,.0f} €")
+
+    st.divider()
+    st.subheader("Récapitulatif du bien")
+
+    recap = pd.DataFrame({
+        "Caractéristique": [
+            "Surface", "Étages", "Chambres", "Salles de bain", "Parking",
+            "Route principale", "Chambre d'amis", "Sous-sol",
+            "Climatisation", "Zone privilégiée", "Ameublement"
+        ],
+        "Valeur": [
+            f"{area} m²", stories, bedrooms, bathrooms, parking,
+            "Oui" if mainroad  else "Non",
+            "Oui" if guestroom else "Non",
+            "Oui" if basement  else "Non",
+            "Oui" if aircon    else "Non",
+            "Oui" if prefarea  else "Non",
+            {
+                "furnished":      "Meublé",
+                "semi-furnished": "Semi-meublé",
+                "unfurnished":    "Non meublé"
+            }[furnishing]
+        ]
+    })
+
+    st.dataframe(recap, use_container_width=True, hide_index=True)
