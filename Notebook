@@ -120,6 +120,14 @@ df = session.table("HOUSE_PRICE_RAW")
 print(f"Nombre de lignes : {df.count()}")
 df.show(5)
 
+# Suppression des doublons
+df = df.drop_duplicates()
+
+# Dimensions après nettoyage
+rows_after = df.count()
+print(f"Nombre de lignes après suppression des doublons : {rows_after}")
+print(f"Nombre de doublons supprimés : {rows_before - rows_after}")
+
 df.printSchema()
 df.describe().show()
 
