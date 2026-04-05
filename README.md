@@ -3,7 +3,8 @@
 ## Membres du groupe
 - Thandie DRANÉ-COPHY
 - Jephté DUFERMEAU
-
+- Emeric Gnanvi
+  
 ## Description du projet
 Pipeline complet de Data Engineering et Machine Learning développé sur Snowflake pour prédire le prix de vente de maisons à partir de leurs caractéristiques (surface, nombre de pièces, équipements, etc.).
 
